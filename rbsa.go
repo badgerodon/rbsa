@@ -1,8 +1,9 @@
 package rbsa
 
 import (
-	"github.com/badgerodon/quadprog"
+	. "github.com/badgerodon/lalg"
 	"github.com/badgerodon/statistics"
+	"github.com/badgerodon/quadprog"
 	"os"
 )
 
@@ -78,24 +79,24 @@ func (this *ReturnsBasedStyleAnalysis) Run(returns []float64) (map[string]float6
 	
 	return result, nil
 }
-func (this *ReturnsBasedStyleAnalysis) getCovarianceVector(rows []int, item string, variance float64) statistics.Vector {
+func (this *ReturnsBasedStyleAnalysis) getCovarianceVector(rows []int, item string, variance float64) Vector {
 	return nil
 }
-func (this *ReturnsBasedStyleAnalysis) getConstraintMatrix1(mat statistics.Matrix) statistics.Matrix {
+func (this *ReturnsBasedStyleAnalysis) getConstraintMatrix1(mat Matrix) Matrix {
 	return mat
 }
-func (this *ReturnsBasedStyleAnalysis) getConstraintMatrix2(mat statistics.Matrix) statistics.Matrix {
+func (this *ReturnsBasedStyleAnalysis) getConstraintMatrix2(mat Matrix) Matrix {
 	return mat
 }
-func (this *ReturnsBasedStyleAnalysis) getConstraintVector1(mat statistics.Matrix) statistics.Vector {
+func (this *ReturnsBasedStyleAnalysis) getConstraintVector1(mat Matrix) Vector {
 	return nil
 }
-func (this *ReturnsBasedStyleAnalysis) getConstraintVector2(mat statistics.Matrix) statistics.Vector {
+func (this *ReturnsBasedStyleAnalysis) getConstraintVector2(mat Matrix) Vector {
 	return nil
 }
 
-func (this *ReturnsBasedStyleAnalysis) getExtendedMatrix(mat statistics.Matrix) statistics.Matrix {
-	n := statistics.NewMatrix(mat.Rows+1, mat.Cols+1)
+func (this *ReturnsBasedStyleAnalysis) getExtendedMatrix(mat Matrix) Matrix {
+	n := NewMatrix(mat.Rows+1, mat.Cols+1)
 	for i := 0; i < n.Rows; i++ {
 		for j := 0; j < n.Cols; j++ {
 			if i == 0 || j == 0 {
@@ -107,12 +108,12 @@ func (this *ReturnsBasedStyleAnalysis) getExtendedMatrix(mat statistics.Matrix) 
 	}
 	return n
 }
-func (this *ReturnsBasedStyleAnalysis) getIndexReturnsMatrix() statistics.Matrix {
+func (this *ReturnsBasedStyleAnalysis) getIndexReturnsMatrix() Matrix {
 	if len(this.indices) == 0 {
-		return statistics.NewMatrix(0, 0)
+		return NewMatrix(0, 0)
 	}
 	sz := len(this.returns[this.indices[0]])
-	n := statistics.NewMatrix(len(this.indices), sz)
+	n := NewMatrix(len(this.indices), sz)
 	for i, key := range this.indices {
 		rs := this.returns[key]
 		for j, v := range rs {
