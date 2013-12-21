@@ -1,89 +1,22 @@
 package rbsa
 
 import (
-	. "github.com/badgerodon/lalg"
 	"bufio"
 	"fmt"
-	"http"
-	"os"
+	. "github.com/badgerodon/lalg"
 	"github.com/badgerodon/statistics"
-	"strings"
+	"log"
+	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
 var (
-	cache = NewCache(100)
-)
-
-func getData(symbol string) (Vector, os.Error) {
-	t := time.LocalTime()
-	
-	y := t.Year
-	m := t.Month
-	
-	if m == 1 {
-		m = 12
-		y--
-	} else {
-		m--
-	}
-
-	client := new(http.Client)
-	vec, err := cache.Get(fmt.Sprint(y, ":", m, ":", symbol), func() (interface{}, os.Error) {
-		r, _, err := client.Get("http://ichart.finance.yahoo.com/table.csv?s=" + http.URLEscape(symbol) +
-			fmt.Sprint("&a=", (m - 1), "&b=5&c=", (y - 4), 
-				"&d=", (m - 1), "&b=5&c=", y,
-				"&ignore=.csv"))
-		if err != nil {
-			return nil, err
-		}	
-		defer r.Body.Close()
-		
-		csv := bufio.NewReader(r.Body)
-		
-		vec := NewVector(37)
-		
-		for i := 0; i <= len(vec); i++ {
-			line, err := csv.ReadString('\n')
-			if err != nil {
-				break
-			}
-			
-			// Skip the headers
-			if i == 0 {
-				continue
-			}
-			
-			// Read the data
-			parts := strings.Split(line, ",", 7)
-			if len(parts) < 6 {
-				continue
-			}
-			
-			v, err := strconv.Atof64(strings.Trim(parts[6], "\r\n"))
-			
-			if err != nil {
-				v = 0
-			}
-			
-			vec[i-1] = v
-		}
-		vec = statistics.Relativize(vec)
-		return vec, nil
-	})
-	
-	if err != nil {
-		return nil, err
-	}
-	
-	return vec.(Vector), nil
-	
-}
-
-//http://ichart.finance.yahoo.com/table.csv?s=%5EGSPC&a=00&b=3&c=1950&d=05&e=2&f=2011&g=m&ignore=.csv
-func Analyze(id string) (map[string]float64, os.Error) {
-	indices := map[string]string{
+	cache           = NewCache(100)
+	throttle        = time.NewTicker(time.Second * 1)
+	DEFAULT_INDICES = map[string]string{
 		"IWB": "Large Cap",
 		"IWD": "Large Cap Value",
 		"IWF": "Large Cap Growth",
@@ -96,32 +29,109 @@ func Analyze(id string) (map[string]float64, os.Error) {
 		"EFA": "International",
 		"AGG": "Fixed Income",
 	}
+)
 
+func getYahoo(symbol string, year, month int) (*http.Response, error) {
+	u := "http://ichart.finance.yahoo.com/table.csv?s=" + url.QueryEscape(symbol) +
+		fmt.Sprint("&a=", (month-1), "&b=5&c=", (year-4),
+			"&d=", (month-1), "&b=5&c=", year,
+			"&ignore=.csv")
+	log.Println("GET", u)
+	res, err := http.Get(u)
+	if err != nil {
+		log.Println("- ERROR", err)
+		return nil, err
+	}
+	if res.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("Error retrieving data for %v", symbol)
+	}
+	log.Println("-", res.Status)
+	return res, err
+}
+
+func getData(symbol string) (Vector, error) {
+	t := time.Now()
+
+	y := t.Year()
+	m := t.Month()
+
+	if m == 1 {
+		m = 12
+		y--
+	} else {
+		m--
+	}
+
+	vec, err := cache.Get(fmt.Sprint(y, ":", m, ":", symbol), func() (interface{}, error) {
+		<-throttle.C
+
+		r, err := getYahoo(symbol, y, int(m))
+		if err != nil {
+			return nil, err
+		}
+		defer r.Body.Close()
+
+		csv := bufio.NewReader(r.Body)
+
+		vec := NewVector(37)
+
+		for i := 0; i <= len(vec); i++ {
+			line, err := csv.ReadString('\n')
+			if err != nil {
+				break
+			}
+
+			// Skip the headers
+			if i == 0 {
+				continue
+			}
+
+			// Read the data
+			parts := strings.Split(line, ",")
+			if len(parts) < 6 {
+				continue
+			}
+
+			v, err := strconv.ParseFloat(strings.Trim(parts[6], "\r\n"), 64)
+
+			if err != nil {
+				v = 0
+			}
+
+			vec[i-1] = v
+		}
+		vec = statistics.Relativize(vec)
+		return vec, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return vec.(Vector), nil
+
+}
+
+//http://ichart.finance.yahoo.com/table.csv?s=%5EGSPC&a=00&b=3&c=1950&d=05&e=2&f=2011&g=m&ignore=.csv
+func Analyze(id string) (map[string]float64, error) {
 	alg := New()
-	for k, _ := range indices {
+	for k, _ := range DEFAULT_INDICES {
 		data, err := getData(k)
 		if err != nil {
 			return nil, err
 		}
 		alg.AddIndex(k, data)
 	}
-	
+
 	data, err := getData(id)
-	
 	if err != nil {
 		return nil, err
 	}
-	
+
 	solution, err := alg.Run(data)
-	
 	if err != nil {
 		return nil, err
 	}
-	
-	newSolution := make(map[string]float64)
-	for k, v := range solution {
-		newSolution[indices[k]] = v
-	}
-	
-	return newSolution, nil
+
+	return solution, nil
 }
